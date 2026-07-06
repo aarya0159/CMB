@@ -1,355 +1,431 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CMB Blackbody Simulator</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CMB Anisotropy Explorer</title>
 <style>
   :root {
-    --bg: #14141a;
-    --panel: #14141a;
-    --ink: #e8e6df;
-    --muted: #8a8894;
-    --accent: #f5a623;
-    --btn: #23232e;
-    --btn-border: #3a3a48;
+    --bg: #101016;
+    --panel: #1c1c26;
+    --text: #e1e1e6;
+    --dim: #8c8c9b;
+    --accent: #ffaa3c;
+    --track: #3c3c4b;
+    --fill: #5a78be;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  * { box-sizing: border-box; }
   body {
+    margin: 0;
     background: var(--bg);
-    color: var(--ink);
-    font-family: "Consolas", "Menlo", "DejaVu Sans Mono", monospace;
-    font-size: 14px;
-    display: flex; flex-direction: column; min-height: 100vh;
+    color: var(--text);
+    font-family: Consolas, "Cascadia Mono", Menlo, monospace;
   }
-  #sky { display: block; width: 100%; height: 62vh; min-height: 320px; image-rendering: auto; }
+  #app { max-width: 1000px; margin: 0 auto; }
+  #map {
+    display: block;
+    width: 100%;
+    image-rendering: auto;
+  }
   #panel {
-    display: flex; flex-wrap: wrap; gap: 28px;
-    padding: 18px 26px 8px 26px;
+    background: var(--panel);
+    border-top: 2px solid #464659;
+    padding: 18px 40px 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px 60px;
   }
-  #controls { flex: 1 1 420px; max-width: 560px; }
-  .ctl-row { margin-bottom: 16px; }
-  .ctl-label {
-    display: flex; justify-content: space-between; align-items: baseline;
+  .sliders { flex: 1 1 380px; min-width: 320px; }
+  .slider-row { margin-bottom: 22px; }
+  .slider-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
     margin-bottom: 6px;
   }
-  .ctl-label .name { color: var(--ink); }
-  .ctl-label .val  { color: var(--accent); font-weight: bold; }
-  input[type=range] {
-    -webkit-appearance: none; appearance: none;
-    width: 100%; height: 4px; border-radius: 2px;
-    background: #3a3a48; outline: none;
+  .slider-head .value { color: var(--accent); }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--track);
+    outline: none;
+    margin: 8px 0;
   }
-  input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none; appearance: none;
-    width: 18px; height: 18px; border-radius: 50%;
-    background: #f2f0ea; border: 1px solid #555; cursor: pointer;
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--text);
+    border: 2px solid var(--fill);
+    cursor: pointer;
   }
-  input[type=range]::-moz-range-thumb {
-    width: 18px; height: 18px; border-radius: 50%;
-    background: #f2f0ea; border: 1px solid #555; cursor: pointer;
+  input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--text);
+    border: 2px solid var(--fill);
+    cursor: pointer;
   }
-  .buttons { margin-top: 6px; }
+  .telemetry { flex: 1 1 380px; min-width: 340px; font-size: 14px; }
+  .telemetry h2 {
+    color: var(--accent);
+    font-size: 17px;
+    margin: 0 0 12px;
+    letter-spacing: 1px;
+  }
+  .telemetry table { border-collapse: collapse; width: 100%; }
+  .telemetry td { padding: 3px 0; }
+  .telemetry td:first-child { color: var(--dim); }
+  .telemetry td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  #footer {
+    background: var(--panel);
+    padding: 6px 40px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: var(--dim);
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  #status { color: var(--accent); }
   button {
-    font-family: inherit; font-size: 13px;
-    color: var(--ink); background: var(--btn);
-    border: 1px solid var(--btn-border); border-radius: 4px;
-    padding: 7px 14px; margin-right: 10px; cursor: pointer;
+    background: var(--track);
+    color: var(--text);
+    border: 1px solid var(--fill);
+    border-radius: 4px;
+    padding: 4px 12px;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
   }
-  button:hover { background: #2e2e3a; }
-  #telemetry { flex: 1 1 320px; min-width: 300px; }
-  #telemetry h2 {
-    color: var(--accent); font-size: 14px; letter-spacing: 2px;
-    margin-bottom: 12px; font-weight: bold;
-  }
-  .t-row {
-    display: flex; justify-content: space-between;
-    padding: 3.5px 0;
-  }
-  .t-row .k { color: var(--muted); }
-  .t-row .v { color: #f2f0ea; font-weight: bold; }
-  #hintbar {
-    margin-top: auto;
-    display: flex; justify-content: space-between;
-    padding: 10px 26px 14px 26px;
-    color: var(--muted); font-size: 12.5px;
-  }
-  #fps { color: var(--accent); font-weight: bold; }
+  button:hover { background: var(--fill); }
 </style>
 </head>
 <body>
-<canvas id="sky"></canvas>
-
-<div id="panel">
-  <div id="controls">
-    <div class="ctl-row">
-      <div class="ctl-label">
-        <span class="name">Universe Age / Cooling</span>
-        <span class="val" id="tempVal">3,000.0 K</span>
+<div id="app">
+  <canvas id="map" width="1000" height="520"></canvas>
+  <div id="panel">
+    <div class="sliders">
+      <div class="slider-row">
+        <div class="slider-head">
+          <span>Universe Age / Cooling</span>
+          <span class="value" id="tempValue"></span>
+        </div>
+        <input type="range" id="tempSlider" min="0" max="1000" value="0">
       </div>
-      <input type="range" id="tempSlider" min="0" max="1000" step="1" value="0">
-    </div>
-    <div class="ctl-row">
-      <div class="ctl-label">
-        <span class="name">Density Perturbation Amplitude (&Delta;T/T)</span>
-        <span class="val" id="ampVal">5.07e-2</span>
+      <div class="slider-row">
+        <div class="slider-head">
+          <span>Density Perturbation Amplitude (&Delta;T/T)</span>
+          <span class="value" id="ampValue"></span>
+        </div>
+        <input type="range" id="ampSlider" min="0" max="1000" value="0">
       </div>
-      <input type="range" id="ampSlider" min="0" max="1000" step="1" value="940">
-    </div>
-    <div class="buttons">
       <button id="pauseBtn">Pause</button>
       <button id="seedBtn">New Seed</button>
     </div>
+    <div class="telemetry">
+      <h2>TELEMETRY</h2>
+      <table>
+        <tr><td>Average Temperature</td>      <td id="tAvg"></td></tr>
+        <tr><td>Peak Frequency&nbsp;&nbsp;(Planck)</td> <td id="nuPeak"></td></tr>
+        <tr><td>Peak Wavelength (Wien)</td>   <td id="lamPeak"></td></tr>
+        <tr><td>&Delta;T (rms anisotropy)</td><td id="dtRms"></td></tr>
+        <tr><td>Redshift z / Age</td>         <td id="zAge"></td></tr>
+      </table>
+    </div>
   </div>
-
-  <div id="telemetry">
-    <h2>TELEMETRY</h2>
-    <div class="t-row"><span class="k">Average Temperature</span><span class="v" id="tAvg">&mdash;</span></div>
-    <div class="t-row"><span class="k">Peak Frequency&nbsp;&nbsp;(Planck)</span><span class="v" id="tPeakF">&mdash;</span></div>
-    <div class="t-row"><span class="k">Peak Wavelength (Wien)</span><span class="v" id="tPeakL">&mdash;</span></div>
-    <div class="t-row"><span class="k">&Delta;T (rms anisotropy)</span><span class="v" id="tRms">&mdash;</span></div>
-    <div class="t-row"><span class="k">Redshift z / Age</span><span class="v" id="tZ">&mdash;</span></div>
+  <div id="footer">
+    <span>LEFT/RIGHT cool-reheat &nbsp;|&nbsp; UP/DOWN amplitude &nbsp;|&nbsp;
+          SPACE pause &nbsp;|&nbsp; R new seed</span>
+    <span id="status"></span>
   </div>
-</div>
-
-<div id="hintbar">
-  <span>LEFT/RIGHT cool-reheat&nbsp;&nbsp;|&nbsp;&nbsp;UP/DOWN amplitude&nbsp;&nbsp;|&nbsp;&nbsp;SPACE pause&nbsp;&nbsp;|&nbsp;&nbsp;R new seed</span>
-  <span id="fps">0 fps</span>
 </div>
 
 <script>
 "use strict";
-/* ============================================================
-   CMB Blackbody Simulator
-   ------------------------------------------------------------
-   Physics used (see the accompanying paper):
-     Planck's law            B_nu(T) = (2 h nu^3 / c^2) / (e^{h nu / kB T} - 1)
-     Wien, frequency form    nu_peak = 58.7893 GHz/K * T   (x* = 2.8214)
-     Wien, wavelength form   lambda_peak = 2.897772 mm*K / T
-     Expansion cooling       T = T0 * (1 + z),  T0 = 2.72548 K
-     Age (matter era approx) t = 13.8 Gyr / (1+z)^{3/2}
-   The map is a smooth Gaussian random field:
-     T(x) = Tbar * (1 + A * delta(x)),  delta built from random
-     Fourier modes, normalized so the realized rms of delta is
-     about 0.37 (fixed by the mode statistics we chose).
-   ============================================================ */
 
-const T0        = 2.72548;        // K, CMB temperature today (Fixsen 2009)
-const WIEN_F    = 58.7893e9;      // Hz per K  (x* kB / h, x* = 2.8214)
-const WIEN_L    = 2.897772e-3;    // m * K
-const T_MAX     = 3000.0;         // K, recombination epoch
-const AGE_TODAY = 13.8e9;         // years
-const FIELD_STD = 0.37;           // realized rms of the unit field
+// ---------------------------------------------------------------- physics
+const WIEN_B = 2.897771955e-3;         // m*K
+const NU_PEAK_PER_K = 5.878925757e10;  // Hz per Kelvin
+const T_TODAY = 2.72548;               // K (Fixsen 2009)
+const T_RECOMBINATION = 3000.0;        // K
 
-// ---------- Gaussian random field from random Fourier modes ----------
-const NMODES = 60;
-let modes = [];
-function reseed() {
-  modes = [];
-  for (let i = 0; i < NMODES; i++) {
-    const kmag  = 40 + 80 * Math.random();        // blob scale range
-    const ang   = Math.random() * Math.PI * 2;
-    modes.push({
-      kx: kmag * Math.cos(ang),
-      ky: kmag * Math.sin(ang),
-      om: (Math.random() - 0.5) * 0.5,            // slow evolution
-      ph: Math.random() * Math.PI * 2,
-      amp: 1
-    });
+// Age of the universe vs scale factor from integrating the Friedmann
+// equation (flat LCDM, Planck 2018: H0=67.36, Om=0.3153, radiation
+// included), tabulated once at startup. Replaces the matter-era
+// (1+z)^-3/2 approximation, whose error peaked at ~20% around z~6.
+const AGE_TABLE = (() => {
+  const H0 = 67.36e3 / 3.0856775814913673e22;      // s^-1
+  const omegaR = 2.4728e-5 / 0.6736 ** 2 * (1 + 0.2271 * 3.046);
+  const omegaM = 0.3153, omegaL = 1 - omegaM - omegaR;
+  const N = 20000, lnMin = Math.log(1e-10);
+  const a = new Float64Array(N), t = new Float64Array(N);
+  let prevA = 0, prevF = 0, acc = 0;
+  for (let i = 0; i < N; i++) {
+    const ai = Math.exp(lnMin * (1 - i / (N - 1)));
+    const Ha = H0 * Math.sqrt(omegaR / ai ** 4 + omegaM / ai ** 3 + omegaL);
+    const f = 1 / (ai * Ha);
+    if (i > 0) acc += 0.5 * (f + prevF) * (ai - prevA);
+    a[i] = ai; t[i] = acc / 3.1557e7;               // years
+    prevA = ai; prevF = f;
   }
-  // normalize: variance of sum of cosines = sum(amp^2)/2  -> set std = FIELD_STD
-  const raw = Math.sqrt(NMODES / 2);
-  for (const m of modes) m.amp = FIELD_STD / raw;
+  return { a, t };
+})();
+
+function ageAtZ(z) {
+  const av = 1 / (1 + Math.max(z, 0));
+  const { a, t } = AGE_TABLE;
+  let lo = 0, hi = a.length - 1;
+  while (hi - lo > 1) {
+    const m = (lo + hi) >> 1;
+    if (a[m] <= av) lo = m; else hi = m;
+  }
+  const f = (av - a[lo]) / (a[hi] - a[lo]);
+  return t[lo] + f * (t[hi] - t[lo]);
 }
-reseed();
 
-// Fast field evaluation: cos(kx*x + ky*y + om*t + ph) expanded with the
-// angle-addition identity so the per-pixel inner loop has no trig calls.
-function computeField(buf, GW, GH, t) {
-  const cA = new Float32Array(NMODES * GW), sA = new Float32Array(NMODES * GW);
-  const cB = new Float32Array(NMODES * GH), sB = new Float32Array(NMODES * GH);
-  for (let m = 0; m < NMODES; m++) {
-    const md = modes[m];
-    for (let i = 0; i < GW; i++) {
-      const a = md.kx * (i / GW);
-      cA[m*GW+i] = md.amp * Math.cos(a);
-      sA[m*GW+i] = md.amp * Math.sin(a);
-    }
-    for (let j = 0; j < GH; j++) {
-      const b = md.ky * ((j / GH) * (GH / GW)) + md.om * t + md.ph;
-      cB[m*GH+j] = Math.cos(b);
-      sB[m*GH+j] = Math.sin(b);
-    }
-  }
-  buf.fill(0);
-  for (let m = 0; m < NMODES; m++) {
-    for (let j = 0; j < GH; j++) {
-      const cb = cB[m*GH+j], sb = sB[m*GH+j];
-      const row = j * GW, col = m * GW;
-      for (let i = 0; i < GW; i++) {
-        buf[row + i] += cA[col+i] * cb - sA[col+i] * sb;
+// ---------------------------------------------------------------- engine
+const FIELD_W = 384, FIELD_H = 240, N_PIX = FIELD_W * FIELD_H;
+const N_WAVES = 48;
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// Sum of random sine plane waves with standing-wave time modulation.
+// The spatial basis sin(k.x + phi) is precomputed once per seed, so each
+// frame is a single coefficient contraction over typed arrays.
+class CMBField {
+  constructor(seed) {
+    const rng = mulberry32(seed);
+    this.amp = new Float32Array(N_WAVES);
+    this.omega = new Float32Array(N_WAVES);
+    this.psi = new Float32Array(N_WAVES);
+    this.basis = new Float32Array(N_WAVES * N_PIX);
+
+    const lnMin = Math.log(18.0), lnMax = Math.log(260.0);
+    const PEAK_SCALE = 70.0;
+    let sumSq = 0;
+    for (let k = 0; k < N_WAVES; k++) {
+      // wavelengths log-uniform, amplitudes peaked at a preferred scale --
+      // a cartoon of the first acoustic peak
+      const lam = Math.exp(lnMin + rng() * (lnMax - lnMin));
+      const u = Math.log(lam / PEAK_SCALE) / 0.75;
+      const a = Math.exp(-u * u) * (0.6 + rng() * 0.8);
+      const kmag = 2 * Math.PI / lam;
+      const theta = rng() * 2 * Math.PI;
+      const kx = kmag * Math.cos(theta), ky = kmag * Math.sin(theta);
+      const phi = rng() * 2 * Math.PI;
+
+      this.amp[k] = a;
+      this.psi[k] = rng() * 2 * Math.PI;
+      // smaller modes oscillate faster (omega ~ k); dominant scale ~12 s
+      this.omega[k] = (2 * Math.PI / 12.0) * (PEAK_SCALE / lam);
+      sumSq += a * a;
+
+      const base = k * N_PIX;
+      for (let y = 0; y < FIELD_H; y++) {
+        const kyy = ky * y + phi;
+        for (let x = 0; x < FIELD_W; x++) {
+          this.basis[base + y * FIELD_W + x] = Math.sin(kx * x + kyy);
+        }
       }
     }
+    // fixed normalization from expected RMS (spatial & temporal sin^2 -> 1/2
+    // each), so the standing-wave pulsing stays visible
+    this.norm = 1.0 / (2.8 * Math.sqrt(sumSq / 4.0));
+  }
+
+  evaluate(t, out) {
+    out.fill(0);
+    for (let k = 0; k < N_WAVES; k++) {
+      const c = this.amp[k] * Math.cos(this.omega[k] * t + this.psi[k]);
+      const base = k * N_PIX, basis = this.basis;
+      for (let i = 0; i < N_PIX; i++) out[i] += c * basis[base + i];
+    }
+    const n = this.norm;
+    for (let i = 0; i < N_PIX; i++) out[i] *= n;
   }
 }
 
-// ---------- diverging colormap (RdYlBu reversed: blue=cold, red=hot) ----------
-const STOPS = [
-  [0.00, 0x31, 0x36, 0x95], [0.10, 0x45, 0x75, 0xb4], [0.22, 0x74, 0xad, 0xd1],
-  [0.35, 0xab, 0xd9, 0xe9], [0.45, 0xe0, 0xf3, 0xf8], [0.50, 0xff, 0xff, 0xbf],
-  [0.55, 0xfe, 0xe0, 0x90], [0.65, 0xfd, 0xae, 0x61], [0.78, 0xf4, 0x6d, 0x43],
-  [0.90, 0xd7, 0x30, 0x27], [1.00, 0xa5, 0x00, 0x26]
-];
-function colormap(t) {               // t in [0,1]
-  t = Math.max(0, Math.min(1, t));
-  for (let i = 1; i < STOPS.length; i++) {
-    if (t <= STOPS[i][0]) {
-      const a = STOPS[i-1], b = STOPS[i];
-      const f = (t - a[0]) / (b[0] - a[0]);
-      return [a[1]+f*(b[1]-a[1]), a[2]+f*(b[2]-a[2]), a[3]+f*(b[3]-a[3])];
+// ---------------------------------------------------------------- colormap
+function buildColormap() {
+  const stops = [
+    [0.00, [10, 15, 95]],
+    [0.20, [25, 80, 200]],
+    [0.42, [120, 175, 230]],
+    [0.50, [232, 228, 218]],
+    [0.58, [250, 195, 105]],
+    [0.80, [225, 85, 30]],
+    [1.00, [140, 5, 20]],
+  ];
+  const lut = new Uint8Array(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const x = i / 255;
+    let s = 0;
+    while (s < stops.length - 2 && x > stops[s + 1][0]) s++;
+    const [x0, c0] = stops[s], [x1, c1] = stops[s + 1];
+    const f = Math.min(1, Math.max(0, (x - x0) / (x1 - x0)));
+    for (let c = 0; c < 3; c++) {
+      lut[i * 3 + c] = Math.round(c0[c] + f * (c1[c] - c0[c]));
     }
   }
-  return [STOPS.at(-1)[1], STOPS.at(-1)[2], STOPS.at(-1)[3]];
+  return lut;
 }
 
-// ---------- state ----------
-let paused = false;
-let simT = 0;                        // field evolution time
-const tempSlider = document.getElementById("tempSlider");
-const ampSlider  = document.getElementById("ampSlider");
+// ---------------------------------------------------------------- formatting
+const fmtTemp = t => t >= 10 ? t.toLocaleString("en-US",
+  { maximumFractionDigits: 1, minimumFractionDigits: 1 }) + " K"
+  : t.toFixed(4) + " K";
+const fmtFreq = hz => hz >= 1e12 ? (hz / 1e12).toFixed(2) + " THz"
+  : (hz / 1e9).toFixed(1) + " GHz";
+const fmtWavelength = m => m < 1e-6 ? (m * 1e9).toFixed(0) + " nm"
+  : m < 1e-3 ? (m * 1e6).toFixed(2) + " µm"
+  : (m * 1e3).toFixed(3) + " mm";
+const fmtDeltaT = k => k >= 1 ? k.toFixed(2) + " K"
+  : k >= 1e-3 ? (k * 1e3).toFixed(2) + " mK"
+  : (k * 1e6).toFixed(1) + " µK";
+const fmtAge = yr => yr < 1e6 ? (yr / 1e3).toFixed(0) + " kyr"
+  : yr < 1e9 ? (yr / 1e6).toFixed(1) + " Myr"
+  : (yr / 1e9).toFixed(2) + " Gyr";
 
-function temperature() {             // log scale: slider 0 -> 3000 K, 1000 -> T0
-  const p = tempSlider.value / 1000;
-  return T_MAX * Math.pow(T0 / T_MAX, p);
-}
-function amplitude() {               // log scale: 1e-6 .. 1e-1
-  const p = ampSlider.value / 1000;
-  return Math.pow(10, -6 + 5 * p);
-}
-
-// ---------- rendering ----------
-const canvas = document.getElementById("sky");
+// ---------------------------------------------------------------- app state
+const canvas = document.getElementById("map");
 const ctx = canvas.getContext("2d");
-const GW = 176, GH = 110;            // coarse physics grid
 const off = document.createElement("canvas");
-off.width = GW; off.height = GH;
+off.width = FIELD_W; off.height = FIELD_H;
 const offCtx = off.getContext("2d");
-const img = offCtx.createImageData(GW, GH);
-const fieldBuf = new Float32Array(GW * GH);
-const COLOR_FULLSCALE = 0.05;        // amplitude giving full color contrast
+const image = offCtx.createImageData(FIELD_W, FIELD_H);
+const pixels = image.data;
 
-function render() {
-  const A = amplitude();
-  computeField(fieldBuf, GW, GH, simT);
-  let sum = 0, sum2 = 0;
-  const n = GW * GH;
-  for (let k = 0; k < n; k++) { const d = fieldBuf[k]; sum += d; sum2 += d * d; }
-  const mean = sum / n;
-  const std  = Math.sqrt(Math.max(0, sum2 / n - mean * mean));
+const lut = buildColormap();
+const fieldBuf = new Float32Array(N_PIX);
+let field = new CMBField((Math.random() * 2 ** 31) | 0);
 
-  // color scale: full contrast at A = 0.05 and +-2.5 field std
-  const scale = (A / COLOR_FULLSCALE) / (2.1 * FIELD_STD);
-  const px = img.data;
-  for (let k = 0; k < n; k++) {
-    const t = 0.5 + 0.5 * Math.max(-1, Math.min(1, fieldBuf[k] * scale));
-    const c = colormap(t);
-    px[4*k] = c[0]; px[4*k+1] = c[1]; px[4*k+2] = c[2]; px[4*k+3] = 255;
-  }
-  offCtx.putImageData(img, 0, 0);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
-  return { mean, std };
-}
+const tempSlider = document.getElementById("tempSlider");
+const ampSlider = document.getElementById("ampSlider");
+const AMP_MIN = 1e-4, AMP_MAX = 0.3, AMP_DEFAULT = 0.02;
 
-// ---------- telemetry ----------
-const fmt = new Intl.NumberFormat("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-function fmtTemp(T) {
-  if (T >= 1000) return fmt.format(T) + " K";
-  if (T >= 10)   return T.toFixed(1) + " K";
-  return T.toFixed(4) + " K";
-}
-function fmtFreq(f) {
-  if (f >= 1e12) return (f / 1e12).toFixed(2) + " THz";
-  return (f / 1e9).toFixed(2) + " GHz";
-}
-function fmtWavelength(l) {
-  if (l < 2e-6)  return Math.round(l * 1e9) + " nm";
-  if (l < 1e-3)  return (l * 1e6).toFixed(2) + " µm";
-  return (l * 1e3).toFixed(3) + " mm";
-}
-function fmtDT(dt) {
-  if (dt >= 1)      return dt.toFixed(2) + " K";
-  if (dt >= 1e-3)   return (dt * 1e3).toFixed(2) + " mK";
-  return (dt * 1e6).toFixed(2) + " µK";
-}
-function fmtAge(z) {
-  const age = AGE_TODAY / Math.pow(1 + z, 1.5);   // matter-era approximation
-  if (age >= 1e9) return (age / 1e9).toFixed(1) + " Gyr";
-  if (age >= 1e6) return Math.round(age / 1e6) + " Myr";
-  return Math.round(age / 1e3) + " kyr";
-}
-function fmtExp(a) {
-  const e = Math.floor(Math.log10(a));
-  return (a / Math.pow(10, e)).toFixed(2) + "e" + e;
-}
+// log-scale mapping: slider position t in [0,1] -> value
+const tempFromT = t => T_RECOMBINATION * (T_TODAY / T_RECOMBINATION) ** t;
+const ampFromT = t => AMP_MIN * (AMP_MAX / AMP_MIN) ** t;
+ampSlider.value = Math.round(
+  1000 * Math.log(AMP_DEFAULT / AMP_MIN) / Math.log(AMP_MAX / AMP_MIN));
 
-function updateTelemetry(stats) {
-  const Tbar = temperature();
-  const A = amplitude();
-  const Tavg = Tbar * (1 + A * stats.mean);
-  const dTrms = Tbar * A * stats.std;
-  const z = Tavg / T0 - 1;
-  document.getElementById("tempVal").textContent = fmtTemp(Tbar);
-  document.getElementById("ampVal").textContent  = fmtExp(A);
-  document.getElementById("tAvg").textContent    = fmtTemp(Tavg);
-  document.getElementById("tPeakF").textContent  = fmtFreq(WIEN_F * Tavg);
-  document.getElementById("tPeakL").textContent  = fmtWavelength(WIEN_L / Tavg);
-  document.getElementById("tRms").textContent    = fmtDT(dTrms);
-  document.getElementById("tZ").textContent =
-    Math.round(z).toLocaleString("en-US") + " / " + fmtAge(z);
-}
+let simTime = 0, paused = false, lastTs = null;
+let fps = 60;
+const keys = {};
 
-// ---------- main loop ----------
-let frames = 0, fpsT = performance.now();
-function resize() {
-  canvas.width  = canvas.clientWidth;
-  canvas.height = canvas.clientHeight;
-}
-window.addEventListener("resize", resize);
+document.getElementById("pauseBtn").addEventListener("click", togglePause);
+document.getElementById("seedBtn").addEventListener("click", reseed);
 
-function loop(now) {
-  if (!paused) simT += 0.016;
-  const stats = render();
-  updateTelemetry(stats);
-  frames++;
-  if (now - fpsT >= 500) {
-    document.getElementById("fps").textContent =
-      Math.round(frames * 1000 / (now - fpsT)) + " fps";
-    frames = 0; fpsT = now;
-  }
-  requestAnimationFrame(loop);
-}
-
-// ---------- controls ----------
 function togglePause() {
   paused = !paused;
   document.getElementById("pauseBtn").textContent = paused ? "Resume" : "Pause";
 }
-document.getElementById("pauseBtn").addEventListener("click", togglePause);
-document.getElementById("seedBtn").addEventListener("click", reseed);
-window.addEventListener("keydown", (e) => {
-  const step = 5;
-  if (e.code === "Space")      { e.preventDefault(); togglePause(); }
-  else if (e.key === "r" || e.key === "R") reseed();
-  else if (e.key === "ArrowRight") tempSlider.value = +tempSlider.value + step; // cool
-  else if (e.key === "ArrowLeft")  tempSlider.value = +tempSlider.value - step; // reheat
-  else if (e.key === "ArrowUp")    ampSlider.value  = +ampSlider.value  + step;
-  else if (e.key === "ArrowDown")  ampSlider.value  = +ampSlider.value  - step;
-});
+function reseed() { field = new CMBField((Math.random() * 2 ** 31) | 0); }
 
-resize();
-requestAnimationFrame(loop);
+window.addEventListener("keydown", e => {
+  if (e.code === "Space") { togglePause(); e.preventDefault(); }
+  else if (e.key === "r" || e.key === "R") reseed();
+  else if (e.key.startsWith("Arrow")) { keys[e.key] = true; e.preventDefault(); }
+});
+window.addEventListener("keyup", e => { keys[e.key] = false; });
+window.addEventListener("blur", () => { for (const k in keys) keys[k] = false; });
+
+function nudge(slider, dt) {
+  slider.value = Math.min(1000, Math.max(0, +slider.value + 600 * dt));
+}
+
+// ---------------------------------------------------------------- main loop
+function frame(ts) {
+  const dt = lastTs === null ? 0.016 : Math.min((ts - lastTs) / 1000, 0.1);
+  lastTs = ts;
+  fps = fps * 0.95 + (1 / Math.max(dt, 1e-4)) * 0.05;
+
+  // keyboard nudges (slider runs hot -> cold, so LEFT cools)
+  if (keys.ArrowLeft) nudge(tempSlider, dt);
+  if (keys.ArrowRight) nudge(tempSlider, -dt);
+  if (keys.ArrowUp) nudge(ampSlider, dt);
+  if (keys.ArrowDown) nudge(ampSlider, -dt);
+
+  if (!paused) simTime += dt;
+
+  const tBase = tempFromT(tempSlider.value / 1000);
+  const amp = ampFromT(ampSlider.value / 1000);
+
+  // ---- simulate
+  field.evaluate(simTime, fieldBuf);
+
+  // ---- physics telemetry from the actual temperature map T = T0(1 + a*f)
+  let sum = 0, sumSq = 0;
+  for (let i = 0; i < N_PIX; i++) {
+    const T = tBase * (1 + amp * fieldBuf[i]);
+    sum += T; sumSq += T * T;
+  }
+  const tAvg = sum / N_PIX;
+  const dtRms = Math.sqrt(Math.max(sumSq / N_PIX - tAvg * tAvg, 0));
+  const nuPeak = NU_PEAK_PER_K * tAvg;
+  const lamPeak = WIEN_B / tAvg;
+  const redshift = tBase / T_TODAY - 1;
+  const ageYr = ageAtZ(redshift);
+
+  // ---- render: contrast tracks the amplitude slider (unity at dT/T = 0.02)
+  const gain = Math.sqrt(amp / 0.02);
+  for (let i = 0; i < N_PIX; i++) {
+    let v = fieldBuf[i] * gain;
+    if (v > 1) v = 1; else if (v < -1) v = -1;
+    const idx = ((v + 1) * 127.5) | 0;
+    const p = i * 4, l = idx * 3;
+    pixels[p] = lut[l]; pixels[p + 1] = lut[l + 1];
+    pixels[p + 2] = lut[l + 2]; pixels[p + 3] = 255;
+  }
+  offCtx.putImageData(image, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+
+  // ---- UI text
+  document.getElementById("tempValue").textContent = fmtTemp(tBase);
+  document.getElementById("ampValue").textContent = amp.toExponential(2);
+  document.getElementById("tAvg").textContent = fmtTemp(tAvg);
+  document.getElementById("nuPeak").textContent = fmtFreq(nuPeak);
+  document.getElementById("lamPeak").textContent = fmtWavelength(lamPeak);
+  document.getElementById("dtRms").textContent = fmtDeltaT(dtRms);
+  document.getElementById("zAge").textContent =
+    Math.round(redshift).toLocaleString("en-US") + " / " + fmtAge(ageYr);
+  document.getElementById("status").textContent =
+    paused ? "PAUSED" : Math.round(fps) + " fps";
+}
+
+// Frame driver: prefer requestAnimationFrame, but some embedded/streamed
+// viewers report the page as hidden and never fire rAF while timers still
+// run at full rate -- so a timer watchdog steps frames whenever rAF stalls.
+let lastRaf = 0, lastDriven = 0;
+function drive(ts) { lastDriven = performance.now(); frame(ts); }
+function rafLoop(ts) {
+  lastRaf = performance.now();
+  drive(ts);
+  requestAnimationFrame(rafLoop);
+}
+requestAnimationFrame(rafLoop);
+// Fallback capped at ~20 fps: software-rendered viewers need main-thread
+// headroom to composite/stream frames, or the display freezes on a stale
+// frame even though the canvas is updating.
+setInterval(() => {
+  const now = performance.now();
+  if (now - lastRaf > 200 && now - lastDriven > 45) drive(now);
+}, 25);
 </script>
 </body>
 </html>
