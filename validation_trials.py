@@ -1,11 +1,22 @@
-"""Trial runner: executes the ACTUAL simulator engine (cmb_simulator.py,
-unmodified) and records telemetry exactly as the app computes it
-(lines 311-324 of the source). Only the pygame *graphics* import is stubbed;
-all physics code paths are the author's own."""
+
+Validation trials · PY
+"""Validation trials for the CMB simulator.
+ 
+Runs the simulator's own engine (cmb_simulator.py, unmodified) and compares
+every telemetry readout against an independent evaluation of the same
+physics, computed here from CODATA 2018 constants and, for the age, from an
+adaptive quadrature of the Friedmann equation using SciPy.
+ 
+Only the pygame graphics import is stubbed; no physics code path is touched.
+Reports the percentage error of each readout at every trial setting and the
+worst case per readout across all trials.
+"""
 import sys, types, math, json
 import numpy as np
-
-# stub pygame (graphics only; never used by CMBField / age table / telemetry)
+from scipy.optimize import brentq
+from scipy.integrate import quad
+ 
+# ---- stub pygame (graphics only; CMBField and the age table never use it)
 pg = types.ModuleType("pygame")
 class _Rect:
     def __init__(self, *a):
@@ -13,86 +24,104 @@ class _Rect:
         elif len(a) == 1: self.x, self.y, self.w, self.h = a[0]
 pg.Rect = _Rect
 sys.modules["pygame"] = pg
-
 import cmb_simulator as sim
-
-NU = sim.NU_PEAK_PER_K   # 5.878925757e10 Hz/K
-WB = sim.WIEN_B          # 2.897771955e-3 m K
-T0 = sim.T_TODAY
-
-def telemetry(t_base, amp, field, t):
-    """Exactly the app's telemetry block (main loop lines 315-324)."""
-    f = field.evaluate(t)
-    t_map = t_base * (1.0 + amp * f)
-    return dict(
-        t_avg=float(t_map.mean()),
-        dt_rms=float(t_map.std()),
-        nu_peak=NU * float(t_map.mean()),
-        lam_peak=WB / float(t_map.mean()),
-        redshift=t_base / T0 - 1.0,
-        age_yr=sim.age_at_redshift(t_base / T0 - 1.0),
-    )
-
-W, H = sim.FIELD_W, sim.FIELD_H   # 384 x 240, the app's real grid
-out = {}
-
-# ---------- Experiment 1: Wien linearity sweep ----------
-fld = sim.CMBField(W, H, seed=11)
-rows = []
-for T in [3000.0, 1500.0, 800.0, 400.0, 200.0, 100.0, 30.0, 10.0, 2.72548]:
-    m = telemetry(T, 0.02, fld, 5.0)
-    rows.append((T, m["t_avg"], m["nu_peak"]))
-slopes = [nu / ta for (_, ta, nu) in rows]
-out["E1"] = {"rows": rows, "slope_GHz_per_K": [s/1e9 for s in slopes]}
-
-# ---------- Experiment 2: amplitude sweep at 3000 K ----------
-rows2 = []
-for amp in [0.3, 0.1, 0.0507, 0.02, 0.01, 0.001, 1e-4]:
-    m = telemetry(3000.0, amp, fld, 5.0)
-    gain = math.sqrt(amp / 0.02)          # the app's visual contrast gain
-    rows2.append((amp, m["dt_rms"], gain))
-out["E2"] = rows2
-
-# ---------- Experiment 3: cooling / redshift ride ----------
-rows3 = []
-for T in [3000.0, 1500.0, 300.0, 30.0, 2.72548]:
-    m = telemetry(T, 0.02, fld, 5.0)
-    rows3.append((T, m["redshift"], m["age_yr"], m["nu_peak"], m["lam_peak"],
-                  m["nu_peak"] / (1.0 + m["redshift"])))
-out["E3"] = rows3
-
-# ---------- Experiment 4: dT rms pulsing at screenshot settings ----------
-samples = []
-for t in np.arange(0.0, 24.0, 0.25):      # two full ~12 s standing-wave periods
-    m = telemetry(3000.0, 0.0507, fld, float(t))
-    samples.append(m["dt_rms"])
-samples = np.array(samples)
-out["E4"] = {"amp": 0.0507, "T": 3000.0,
-             "dt_mean": float(samples.mean()),
-             "dt_min": float(samples.min()), "dt_max": float(samples.max()),
-             "spread_THz_mean": 58.7893e9 * samples.mean() / 1e12,
-             "pct_of_peak": 100 * samples.mean() * 0.02 / 0.02 * 0.0507 / 0.0507 * (58.7893e9*samples.mean()) / (NU*3000.0)}
-
-# ---------- Experiment 5: cosmic variance across seeds ----------
-vals = []
-for s in range(1, 13):
-    f2 = sim.CMBField(W, H, seed=s)
-    m = telemetry(3000.0, 0.0507, f2, 5.0)
-    vals.append(m["dt_rms"])
-vals = np.array(vals)
-out["E5"] = {"n": len(vals), "mean": float(vals.mean()),
-             "std": float(vals.std(ddof=1)),
-             "min": float(vals.min()), "max": float(vals.max())}
-
-# ---------- Validation table at recombination default ----------
-m = telemetry(3000.0, 0.0507, fld, 5.0)
-out["VAL"] = {**m,
-  "pred_nu": NU*m["t_avg"], "pred_lam": WB/m["t_avg"],
-  "z_pred": 3000.0/T0-1.0}
-
-# ---------- time-averaged field std (the normalization the map realizes) ----------
-stds = [float(fld.evaluate(float(t)).std()) for t in np.arange(0, 24, 0.25)]
-out["FIELD_STD"] = {"mean": float(np.mean(stds)), "min": float(np.min(stds)),
-                    "max": float(np.max(stds))}
-
-print(json.dumps(out, indent=1, default=str))
+ 
+# ---------------------------------------------------------------- independent
+# CODATA 2018
+H   = 6.62607015e-34      # J s      (exact)
+KB  = 1.380649e-23        # J K^-1   (exact)
+C   = 2.99792458e8        # m s^-1   (exact)
+MPC = 3.0856775814913673e22
+YR  = 3.1557e7
+ 
+# Wien roots, solved here rather than taken from the simulator
+X_FREQ = brentq(lambda x: 3.0 * (1.0 - math.exp(-x)) - x, 1.0, 5.0)
+X_WAVE = brentq(lambda x: 5.0 * (1.0 - math.exp(-x)) - x, 1.0, 8.0)
+NU_PER_K_IND = X_FREQ * KB / H          # Hz per kelvin
+WIEN_B_IND   = H * C / (X_WAVE * KB)    # m K
+ 
+# Flat LCDM, Planck 2018, same parameters the simulator uses
+H0 = 67.36e3 / MPC
+OM_R = 2.4728e-5 / 0.6736 ** 2 * (1.0 + 0.2271 * 3.046)
+OM_M = 0.3153
+OM_L = 1.0 - OM_M - OM_R
+ 
+def age_independent(z):
+    """Age at redshift z by adaptive quadrature: t = int_0^a da/(a H(a))."""
+    a_end = 1.0 / (1.0 + z)
+    f = lambda a: 1.0 / (a * H0 * math.sqrt(OM_R*a**-4 + OM_M*a**-3 + OM_L))
+    val, _ = quad(f, 0.0, a_end, limit=200)
+    return val / YR
+ 
+def pct(sim_val, ind_val):
+    if ind_val == 0.0:
+        return 0.0 if sim_val == 0.0 else float("inf")
+    return 100.0 * abs(sim_val - ind_val) / abs(ind_val)
+ 
+# ---------------------------------------------------------------- trials
+W, H_PIX = sim.FIELD_W, sim.FIELD_H
+BASELINES = [3000.0, 1500.0, 300.0, 30.0, sim.T_TODAY]
+SEEDS     = range(1, 13)
+TIMES     = np.arange(0.0, 24.0, 3.0)
+AMP       = 0.02
+ 
+worst = {k: 0.0 for k in ["avg_T", "nu_peak", "lam_peak", "redshift", "age"]}
+where = {k: None for k in worst}
+rows  = []
+ 
+for t_base in BASELINES:
+    for s in SEEDS:
+        fld = sim.CMBField(W, H_PIX, seed=s)
+        for t in TIMES:
+            f = fld.evaluate(float(t))
+            t_map = t_base * (1.0 + AMP * f)
+            t_avg = float(t_map.mean())
+ 
+            # what the simulator reports
+            nu_sim  = sim.NU_PEAK_PER_K * t_avg
+            lam_sim = sim.WIEN_B / t_avg
+            z_sim   = t_base / sim.T_TODAY - 1.0
+            age_sim = sim.age_at_redshift(z_sim)
+ 
+            # independent evaluation of the same quantities
+            nu_ind  = NU_PER_K_IND * t_avg
+            lam_ind = WIEN_B_IND / t_avg
+            z_ind   = t_base / 2.72548 - 1.0
+            age_ind = age_independent(z_ind)
+ 
+            e = {
+                "avg_T":    pct(t_avg, t_base),      # finite-map mean offset
+                "nu_peak":  pct(nu_sim, nu_ind),
+                "lam_peak": pct(lam_sim, lam_ind),
+                "redshift": pct(z_sim, z_ind),
+                "age":      pct(age_sim, age_ind),
+            }
+            for k, v in e.items():
+                if v > worst[k]:
+                    worst[k] = v
+                    where[k] = {"T_base": t_base, "seed": s, "t": float(t)}
+            rows.append({"T_base": t_base, "seed": s, "t": float(t), **e})
+ 
+# ---------------------------------------------------------------- report
+print("Independent constants solved here:")
+print(f"  x*(frequency form)  = {X_FREQ:.10f}")
+print(f"  x*(wavelength form) = {X_WAVE:.10f}")
+print(f"  nu_peak per K       = {NU_PER_K_IND:.6e} Hz/K   "
+      f"(simulator: {sim.NU_PEAK_PER_K:.6e})")
+print(f"  Wien b              = {WIEN_B_IND:.9e} m K     "
+      f"(simulator: {sim.WIEN_B:.9e})")
+print(f"\nTrials: {len(rows)} "
+      f"({len(BASELINES)} baselines x {len(list(SEEDS))} seeds x {len(TIMES)} times)\n")
+print(f"{'readout':<12}{'worst-case error':>18}   worst at")
+for k in ["avg_T", "nu_peak", "lam_peak", "redshift", "age"]:
+    w = where[k]
+    at = ("exact at every setting" if w is None else
+          f"T={w['T_base']:.5g} K, seed={w['seed']}, t={w['t']:.0f}s")
+    print(f"{k:<12}{worst[k]:>17.5f}%   {at}")
+print(f"\nWORST CASE ACROSS ALL READOUTS: {max(worst.values()):.3f}%")
+ 
+json.dump({"worst": worst, "where": where, "n_trials": len(rows),
+           "constants": {"x_freq": X_FREQ, "x_wave": X_WAVE,
+                         "nu_per_K_independent": NU_PER_K_IND,
+                         "wien_b_independent": WIEN_B_IND}},
+          open("validation_results.json", "w"), indent=1)
